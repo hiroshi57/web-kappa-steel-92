@@ -45,6 +45,64 @@ export default function AthleteReportPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const handleExcelExport = useCallback(() => {
+    if (!data) return;
+    const rows: (string | number)[][] = [];
+    rows.push(["sports-tech スカウトレポート"]);
+    rows.push(["選手名", data.name]);
+    rows.push(["ポジション", data.position ?? ""]);
+    rows.push(["競技", data.sport ?? ""]);
+    rows.push(["地域", data.location ?? ""]);
+    rows.push(["身長(cm)", data.height_cm ?? ""]);
+    rows.push(["体重(kg)", data.weight_kg ?? ""]);
+    rows.push(["BMI", data.bmi ?? ""]);
+    rows.push(["発行日", today]);
+    rows.push([]);
+    if (data.latest) {
+      rows.push(["総合スコア(参考値)", data.latest.total_score]);
+      rows.push([]);
+      rows.push(["項目", "スコア", "同ポジ平均"]);
+      for (const a of AXES) {
+        rows.push([
+          a.label,
+          data.latest[a.key],
+          data.benchmark ? (data.benchmark[a.key] as number) : "",
+        ]);
+      }
+      rows.push([]);
+      rows.push(["同ポジション順位", data.percentile != null ? `上位${100 - data.percentile}%` : ""]);
+      rows.push(["安定性", data.consistency ?? ""]);
+      if (data.prediction) {
+        rows.push([`${data.prediction.horizon}予測`, data.prediction.projected_total]);
+        rows.push(["伸びしろ(potential)", data.prediction.potential]);
+        rows.push(["所見", data.prediction.comment]);
+      }
+    }
+    if (data.abilities && data.abilities.length > 0) {
+      rows.push([]);
+      rows.push(["詳細能力評価"]);
+      for (const ab of data.abilities) rows.push([ab.name, ab.value]);
+    }
+    rows.push([]);
+    rows.push(["※本レポートのスコアはAIによる参考値です。選手評価の唯一の根拠として使用しないでください。"]);
+
+    const escape = (v: string | number) => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = rows.map((r) => r.map(escape).join(",")).join("\r\n");
+    // UTF-8 BOM を付与して Excel で文字化けを防ぐ
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `scout-report_${data.name}_${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [data, today]);
+
   return (
     <>
       <Head>
@@ -61,6 +119,14 @@ export default function AthleteReportPage() {
           </Link>
           <button className={styles.printBtn} onClick={() => window.print()}>
             🖨 PDFで保存 / 印刷
+          </button>
+          <button
+            className={styles.printBtn}
+            onClick={handleExcelExport}
+            disabled={!data}
+            style={{ marginLeft: 8 }}
+          >
+            📊 Excel/CSVで保存
           </button>
         </div>
 

@@ -133,6 +133,9 @@ export default function ScoutSearchPage() {
             <Link className={styles.link} href="/scout/saved">
               🔔 保存条件
             </Link>
+            <Link className={styles.link} href="/scout/pipeline">
+              📋 パイプライン
+            </Link>
             <button className={styles.link} onClick={handleLogout}>
               ログアウト
             </button>

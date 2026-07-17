@@ -561,3 +561,268 @@ export function getSubscription(): Promise<Subscription> {
   }
   return request<Subscription>("GET", "/api/billing/subscription");
 }
+
+// ── 商談パイプライン(C#25) / 共有ノート(C#26) / 動画クリップ(C#27) ──
+
+export type ContactStage =
+  | "interested"
+  | "contacted"
+  | "trial"
+  | "offer"
+  | "signed"
+  | "dropped";
+
+export const CONTACT_STAGES: { value: ContactStage; label: string }[] = [
+  { value: "interested", label: "注目" },
+  { value: "contacted", label: "接触済み" },
+  { value: "trial", label: "練習参加" },
+  { value: "offer", label: "オファー" },
+  { value: "signed", label: "獲得" },
+  { value: "dropped", label: "見送り" },
+];
+
+export interface Contact {
+  id: string;
+  athlete_profile_id: string;
+  athlete_name: string | null;
+  athlete_position: string | null;
+  athlete_total_score: number | null;
+  stage: ContactStage;
+  note: string | null;
+  contacted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const DEMO_CONTACTS_KEY = "sportstech_demo_contacts";
+
+function demoReadContacts(): Contact[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DEMO_CONTACTS_KEY);
+    if (raw == null) return demoSeedContacts();
+    return JSON.parse(raw) as Contact[];
+  } catch {
+    return [];
+  }
+}
+
+function demoWriteContacts(items: Contact[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_CONTACTS_KEY, JSON.stringify(items));
+}
+
+/** デモ初期表示用に、検索データから数件のパイプラインを生成 */
+function demoSeedContacts(): Contact[] {
+  const now = new Date().toISOString();
+  const athletes = demoSearch();
+  const stages: ContactStage[] = ["interested", "contacted", "trial", "offer"];
+  const seeded: Contact[] = athletes.slice(0, 4).map((a, i) => ({
+    id: `seed-${a.id}`,
+    athlete_profile_id: a.id,
+    athlete_name: a.name,
+    athlete_position: a.position,
+    athlete_total_score: a.latest_total_score,
+    stage: stages[i % stages.length],
+    note: null,
+    contacted_at: null,
+    created_at: now,
+    updated_at: now,
+  }));
+  demoWriteContacts(seeded);
+  return seeded;
+}
+
+export function listContacts(): Promise<Contact[]> {
+  if (DEMO) return delay(demoReadContacts());
+  return request<Contact[]>("GET", "/api/scouts/contacts");
+}
+
+export async function createContact(input: {
+  athlete_profile_id: string;
+  stage?: ContactStage;
+  note?: string;
+}): Promise<Contact> {
+  if (DEMO) {
+    const items = demoReadContacts();
+    const found = await getAthlete(input.athlete_profile_id).catch(() => null);
+    const now = new Date().toISOString();
+    const item: Contact = {
+      id: `c-${Date.now()}`,
+      athlete_profile_id: input.athlete_profile_id,
+      athlete_name: found?.name ?? "選手",
+      athlete_position: found?.position ?? null,
+      athlete_total_score: found?.latest_total_score ?? null,
+      stage: input.stage ?? "interested",
+      note: input.note ?? null,
+      contacted_at: null,
+      created_at: now,
+      updated_at: now,
+    };
+    demoWriteContacts([item, ...items]);
+    return delay(item);
+  }
+  return request<Contact>("POST", "/api/scouts/contacts", input);
+}
+
+export function updateContact(
+  id: string,
+  patch: { stage?: ContactStage; note?: string }
+): Promise<Contact> {
+  if (DEMO) {
+    const items = demoReadContacts();
+    const idx = items.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      items[idx] = { ...items[idx], ...patch, updated_at: new Date().toISOString() };
+      demoWriteContacts(items);
+      return delay(items[idx]);
+    }
+    return Promise.reject(new ApiError(404, "not found"));
+  }
+  return request<Contact>("PATCH", `/api/scouts/contacts/${id}`, patch);
+}
+
+export function deleteContact(id: string): Promise<void> {
+  if (DEMO) {
+    demoWriteContacts(demoReadContacts().filter((c) => c.id !== id));
+    return delay(undefined);
+  }
+  return request<void>("DELETE", `/api/scouts/contacts/${id}`);
+}
+
+// ── 共有ノート(C#26) ────────────────────────────────────────────────
+
+export interface AthleteNote {
+  id: string;
+  author_user_id: string;
+  athlete_profile_id: string;
+  body: string;
+  created_at: string;
+}
+
+const DEMO_NOTES_KEY = "sportstech_demo_notes";
+
+function demoReadNotes(): AthleteNote[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(DEMO_NOTES_KEY) ?? "[]") as AthleteNote[];
+  } catch {
+    return [];
+  }
+}
+
+function demoWriteNotes(items: AthleteNote[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_NOTES_KEY, JSON.stringify(items));
+}
+
+export function listNotes(athleteId: string): Promise<AthleteNote[]> {
+  if (DEMO) {
+    return delay(
+      demoReadNotes()
+        .filter((n) => n.athlete_profile_id === athleteId)
+        .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    );
+  }
+  return request<AthleteNote[]>("GET", `/api/scouts/notes?athlete_profile_id=${athleteId}`);
+}
+
+export function createNote(athleteId: string, body: string): Promise<AthleteNote> {
+  if (DEMO) {
+    const item: AthleteNote = {
+      id: `n-${Date.now()}`,
+      author_user_id: "demo",
+      athlete_profile_id: athleteId,
+      body,
+      created_at: new Date().toISOString(),
+    };
+    demoWriteNotes([item, ...demoReadNotes()]);
+    return delay(item);
+  }
+  return request<AthleteNote>("POST", "/api/scouts/notes", {
+    athlete_profile_id: athleteId,
+    body,
+  });
+}
+
+export function deleteNote(id: string): Promise<void> {
+  if (DEMO) {
+    demoWriteNotes(demoReadNotes().filter((n) => n.id !== id));
+    return delay(undefined);
+  }
+  return request<void>("DELETE", `/api/scouts/notes/${id}`);
+}
+
+// ── 動画クリップ(C#27) ──────────────────────────────────────────────
+
+export interface VideoClip {
+  id: string;
+  video_id: string;
+  creator_user_id: string;
+  title: string;
+  start_sec: number;
+  end_sec: number;
+  comment: string | null;
+  created_at: string;
+}
+
+const DEMO_CLIPS_KEY = "sportstech_demo_clips";
+
+function demoReadClips(): VideoClip[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(DEMO_CLIPS_KEY) ?? "[]") as VideoClip[];
+  } catch {
+    return [];
+  }
+}
+
+function demoWriteClips(items: VideoClip[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_CLIPS_KEY, JSON.stringify(items));
+}
+
+/** デモでは選手の代表動画IDを athlete id から決定論的に導出する */
+export function demoVideoIdFor(athleteId: string): string {
+  return `demo-video-${athleteId}`;
+}
+
+export function listClips(videoId: string): Promise<VideoClip[]> {
+  if (DEMO) {
+    return delay(
+      demoReadClips()
+        .filter((c) => c.video_id === videoId)
+        .sort((a, b) => a.start_sec - b.start_sec)
+    );
+  }
+  return request<VideoClip[]>("GET", `/api/scouts/videos/${videoId}/clips`);
+}
+
+export function createClip(
+  videoId: string,
+  input: { title: string; start_sec: number; end_sec: number; comment?: string }
+): Promise<VideoClip> {
+  if (DEMO) {
+    const item: VideoClip = {
+      id: `clip-${Date.now()}`,
+      video_id: videoId,
+      creator_user_id: "demo",
+      title: input.title,
+      start_sec: input.start_sec,
+      end_sec: input.end_sec,
+      comment: input.comment ?? null,
+      created_at: new Date().toISOString(),
+    };
+    demoWriteClips([...demoReadClips(), item]);
+    return delay(item);
+  }
+  return request<VideoClip>("POST", `/api/scouts/videos/${videoId}/clips`, input);
+}
+
+export function deleteClip(id: string): Promise<void> {
+  if (DEMO) {
+    demoWriteClips(demoReadClips().filter((c) => c.id !== id));
+    return delay(undefined);
+  }
+  return request<void>("DELETE", `/api/scouts/clips/${id}`);
+}

@@ -11,15 +11,28 @@ import ScoreRing from "@/components/ScoreRing";
 import StatBars from "@/components/StatBars";
 import {
   ApiError,
+  type AthleteNote,
   type AthleteScores,
+  type Contact,
+  createClip,
+  createContact,
+  createNote,
   type DeepAnalysis,
+  deleteClip,
+  deleteNote,
+  demoVideoIdFor,
   getAthleteScores,
   getDeepAnalysis,
   getMarketValue,
   getSimilarAthletes,
   getToken,
+  listClips,
+  listContacts,
+  listNotes,
   type MarketValue,
   type SimilarAthlete,
+  updateContact,
+  type VideoClip,
 } from "@/lib/api";
 import styles from "@/styles/dashboard.module.css";
 import ins from "@/styles/insights.module.css";
@@ -56,15 +69,31 @@ export default function AthleteDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // スカウト業務（商談・ノート・クリップ）
+  const [contact, setContact] = useState<Contact | null>(null);
+  const [notes, setNotes] = useState<AthleteNote[]>([]);
+  const [noteInput, setNoteInput] = useState("");
+  const [clips, setClips] = useState<VideoClip[]>([]);
+  const [clipTitle, setClipTitle] = useState("");
+  const [clipStart, setClipStart] = useState("");
+  const [clipEnd, setClipEnd] = useState("");
+  const [busy, setBusy] = useState(false);
+
   const load = useCallback(async (athleteId: string) => {
     setLoading(true);
     setError(null);
     try {
       setData(await getAthleteScores(athleteId));
-      // 深掘り分析・類似選手・市場価値は失敗しても本体表示を妨げない
+      // 深掘り分析・類似選手・市場価値・業務データは失敗しても本体表示を妨げない
       void getDeepAnalysis(athleteId).then(setDeep, () => undefined);
       void getSimilarAthletes(athleteId).then(setSimilar, () => undefined);
       void getMarketValue(athleteId).then(setMarket, () => undefined);
+      void listNotes(athleteId).then(setNotes, () => undefined);
+      void listClips(demoVideoIdFor(athleteId)).then(setClips, () => undefined);
+      void listContacts().then(
+        (list) => setContact(list.find((c) => c.athlete_profile_id === athleteId) ?? null),
+        () => undefined
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setError("選手が見つかりませんでした（非公開の可能性があります）。");
@@ -107,6 +136,85 @@ export default function AthleteDetailPage() {
     return Math.round((last - first) * 10) / 10;
   }, [data]);
 
+  // ── スカウト業務ハンドラ ──
+  const athleteId = typeof id === "string" ? id : "";
+
+  const handleAddToPipeline = () => {
+    if (!athleteId || contact) return;
+    setBusy(true);
+    void createContact({ athlete_profile_id: athleteId, stage: "interested" })
+      .then((c) => setContact(c))
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
+
+  const handleAdvanceStage = () => {
+    if (!contact) return;
+    const order = ["interested", "contacted", "trial", "offer", "signed"] as const;
+    const idx = order.indexOf(contact.stage as (typeof order)[number]);
+    const next = order[idx + 1];
+    if (!next) return;
+    setBusy(true);
+    void updateContact(contact.id, { stage: next })
+      .then((c) => setContact(c))
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
+
+  const handleAddNote = () => {
+    const body = noteInput.trim();
+    if (!athleteId || !body) return;
+    setBusy(true);
+    void createNote(athleteId, body)
+      .then((n) => {
+        setNotes((prev) => [n, ...prev]);
+        setNoteInput("");
+      })
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
+
+  const handleDeleteNote = (noteId: string) => {
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    void deleteNote(noteId).catch(() => undefined);
+  };
+
+  const handleAddClip = () => {
+    const start = Number(clipStart);
+    const end = Number(clipEnd);
+    const title = clipTitle.trim();
+    if (!athleteId || !title || !(end > start) || start < 0) return;
+    setBusy(true);
+    void createClip(demoVideoIdFor(athleteId), { title, start_sec: start, end_sec: end })
+      .then((c) => {
+        setClips((prev) => [...prev, c].sort((a, b) => a.start_sec - b.start_sec));
+        setClipTitle("");
+        setClipStart("");
+        setClipEnd("");
+      })
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
+
+  const handleDeleteClip = (clipId: string) => {
+    setClips((prev) => prev.filter((c) => c.id !== clipId));
+    void deleteClip(clipId).catch(() => undefined);
+  };
+
+  const stageLabel: Record<string, string> = {
+    interested: "注目",
+    contacted: "接触済み",
+    trial: "練習参加",
+    offer: "オファー",
+    signed: "獲得",
+    dropped: "見送り",
+  };
+  const fmtClock = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
+
   return (
     <>
       <Head>
@@ -119,6 +227,9 @@ export default function AthleteDetailPage() {
             sports-tech スカウト
           </span>
           <span style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
+            <Link className={styles.link} href="/scout/pipeline">
+              商談パイプライン
+            </Link>
             {typeof id === "string" ? (
               <Link className={styles.link} href={`/scout/athletes/${id}/report`}>
                 🖨 レポート出力
@@ -699,6 +810,199 @@ export default function AthleteDetailPage() {
                       </div>
                     </section>
                   ) : null}
+
+                  {/* ── スカウト業務（商談・共有ノート・クリップ） ── */}
+                  <section className={styles.section}>
+                    <h2 className={styles.subheading}>スカウト業務</h2>
+                    <div className={ins.grid}>
+                      {/* 商談ステータス */}
+                      <div className={ins.panel}>
+                        <div className={ins.panelHead}>
+                          <span className={ins.panelTitle}>
+                            <span className={ins.panelIcon}>📋</span>商談ステータス
+                          </span>
+                          {contact ? (
+                            <span className={ins.badge}>{stageLabel[contact.stage]}</span>
+                          ) : null}
+                        </div>
+                        {contact ? (
+                          <>
+                            <p className={ins.comment} style={{ marginTop: 0, borderTop: "none" }}>
+                              この選手はパイプラインで管理中です。
+                            </p>
+                            <div className={ins.formRow}>
+                              {contact.stage !== "signed" && contact.stage !== "dropped" ? (
+                                <button
+                                  type="button"
+                                  className={ins.btn}
+                                  onClick={handleAdvanceStage}
+                                  disabled={busy}
+                                >
+                                  次の段階へ進める
+                                </button>
+                              ) : null}
+                              <Link className={ins.btnGhost} href="/scout/pipeline" style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "var(--space-2) var(--space-4)",
+                                borderRadius: "var(--radius-sm)",
+                                fontSize: "var(--text-sm)",
+                                fontWeight: 600,
+                              }}>
+                                パイプラインで見る
+                              </Link>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <p className={ins.comment} style={{ marginTop: 0, borderTop: "none" }}>
+                              まだ商談化されていません。パイプラインに追加して進捗を管理できます。
+                            </p>
+                            <button
+                              type="button"
+                              className={ins.btn}
+                              onClick={handleAddToPipeline}
+                              disabled={busy}
+                            >
+                              ＋ 商談に追加（注目）
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      {/* 共有ノート */}
+                      <div className={ins.panel}>
+                        <div className={ins.panelHead}>
+                          <span className={ins.panelTitle}>
+                            <span className={ins.panelIcon}>📝</span>共有ノート
+                          </span>
+                          <span className={ins.badge}>チーム内</span>
+                        </div>
+                        <div className={ins.form}>
+                          <textarea
+                            className={ins.textarea}
+                            rows={2}
+                            placeholder="所見・気づきをチームに共有…"
+                            value={noteInput}
+                            onChange={(e) => setNoteInput(e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className={ins.btn}
+                            onClick={handleAddNote}
+                            disabled={busy || !noteInput.trim()}
+                          >
+                            投稿する
+                          </button>
+                        </div>
+                        <div style={{ marginTop: "var(--space-3)" }}>
+                          {notes.length === 0 ? (
+                            <p className={ins.footnote}>まだノートはありません。</p>
+                          ) : (
+                            notes.map((n) => (
+                              <div key={n.id} className={ins.listItem}>
+                                <div style={{ fontSize: "var(--text-sm)" }}>{n.body}</div>
+                                <div className={ins.listMeta}>
+                                  <span>{new Date(n.created_at).toLocaleDateString("ja-JP")}</span>
+                                  <button
+                                    type="button"
+                                    className={ins.delBtn}
+                                    onClick={() => handleDeleteNote(n.id)}
+                                  >
+                                    削除
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 動画クリップ */}
+                      <div className={ins.panel}>
+                        <div className={ins.panelHead}>
+                          <span className={ins.panelTitle}>
+                            <span className={ins.panelIcon}>🎬</span>動画クリップ
+                          </span>
+                        </div>
+                        <div className={ins.form}>
+                          <input
+                            className={ins.input}
+                            placeholder="クリップ名（例: 1対1突破）"
+                            value={clipTitle}
+                            onChange={(e) => setClipTitle(e.target.value)}
+                          />
+                          <div className={ins.formRow}>
+                            <input
+                              className={ins.input}
+                              type="number"
+                              min={0}
+                              placeholder="開始秒"
+                              value={clipStart}
+                              onChange={(e) => setClipStart(e.target.value)}
+                            />
+                            <input
+                              className={ins.input}
+                              type="number"
+                              min={0}
+                              placeholder="終了秒"
+                              value={clipEnd}
+                              onChange={(e) => setClipEnd(e.target.value)}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className={ins.btn}
+                            onClick={handleAddClip}
+                            disabled={
+                              busy ||
+                              !clipTitle.trim() ||
+                              !(Number(clipEnd) > Number(clipStart))
+                            }
+                          >
+                            クリップを追加
+                          </button>
+                        </div>
+                        <div style={{ marginTop: "var(--space-3)" }}>
+                          {clips.length === 0 ? (
+                            <p className={ins.footnote}>
+                              重要なプレーの区間を切り出してチームで共有できます。
+                            </p>
+                          ) : (
+                            clips.map((c) => (
+                              <div key={c.id} className={ins.listItem}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: "var(--space-2)",
+                                  }}
+                                >
+                                  <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>
+                                    {c.title}
+                                  </span>
+                                  <span className={ins.clipPill}>
+                                    {fmtClock(c.start_sec)}–{fmtClock(c.end_sec)}
+                                  </span>
+                                </div>
+                                <div className={ins.listMeta}>
+                                  <span>{Math.round(c.end_sec - c.start_sec)}秒</span>
+                                  <button
+                                    type="button"
+                                    className={ins.delBtn}
+                                    onClick={() => handleDeleteClip(c.id)}
+                                  >
+                                    削除
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
 
                   {/* ── 総合スコア推移 ── */}
                   <section className={styles.section}>

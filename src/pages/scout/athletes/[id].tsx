@@ -6,7 +6,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import RadarChart, { type RadarAxis } from "@/components/RadarChart";
 import ScoreHistoryChart from "@/components/ScoreHistoryChart";
 import ScoreRing from "@/components/ScoreRing";
-import { ApiError, type AthleteScores, getAthleteScores, getToken } from "@/lib/api";
+import {
+  ApiError,
+  type AthleteScores,
+  type DeepAnalysis,
+  getAthleteScores,
+  getDeepAnalysis,
+  getMarketValue,
+  getSimilarAthletes,
+  getToken,
+  type MarketValue,
+  type SimilarAthlete,
+} from "@/lib/api";
 import styles from "@/styles/dashboard.module.css";
 
 const METRICS = [
@@ -17,6 +28,36 @@ const METRICS = [
 ] as const;
 
 type MetricKey = (typeof METRICS)[number]["key"];
+
+/** 小型スコアバー（深掘り分析用） */
+function MiniBar({ label, value }: { label: string; value: number }) {
+  const r = ratingLabel(value);
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-sm)" }}>
+        <span>{label}</span>
+        <strong style={{ color: r.color }}>{value}</strong>
+      </div>
+      <div
+        style={{
+          height: 6,
+          background: "var(--color-border)",
+          borderRadius: "var(--radius-full)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${Math.min(100, value)}%`,
+            height: "100%",
+            background: r.color,
+            borderRadius: "var(--radius-full)",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function ratingLabel(v: number): { text: string; color: string } {
   if (v >= 85) return { text: "S 非常に優秀", color: "var(--color-success)" };
@@ -30,6 +71,9 @@ export default function AthleteDetailPage() {
   const router = useRouter();
   const { id } = router.query;
   const [data, setData] = useState<AthleteScores | null>(null);
+  const [deep, setDeep] = useState<DeepAnalysis | null>(null);
+  const [similar, setSimilar] = useState<SimilarAthlete[]>([]);
+  const [market, setMarket] = useState<MarketValue | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -38,6 +82,10 @@ export default function AthleteDetailPage() {
     setError(null);
     try {
       setData(await getAthleteScores(athleteId));
+      // 深掘り分析・類似選手・市場価値は失敗しても本体表示を妨げない
+      void getDeepAnalysis(athleteId).then(setDeep, () => undefined);
+      void getSimilarAthletes(athleteId).then(setSimilar, () => undefined);
+      void getMarketValue(athleteId).then(setMarket, () => undefined);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setError("選手が見つかりませんでした（非公開の可能性があります）。");
@@ -481,6 +529,225 @@ export default function AthleteDetailPage() {
                       ) : null}
                     </div>
                   </section>
+
+                  {/* ── 深掘り分析（対人・局面・利き足・判断・セットプレー） ── */}
+                  {deep ? (
+                    <section className={styles.section}>
+                      <h2 className={styles.subheading}>深掘り分析（対人・局面・判断）</h2>
+                      <div className={styles.infoGrid}>
+                        <div className={styles.infoCard}>
+                          <div className={styles.infoTitle}>⚔️ 対人プレー（1対1）</div>
+                          <MiniBar label="仕掛け（攻撃）" value={deep.duel.attacking_1v1} />
+                          <MiniBar label="対応（守備）" value={deep.duel.defending_1v1} />
+                          <MiniBar label="寄せ・プレス" value={deep.duel.pressing} />
+                          <div className={styles.infoNote}>{deep.duel.comment}</div>
+                        </div>
+                        <div className={styles.infoCard}>
+                          <div className={styles.infoTitle}>🔄 局面別評価</div>
+                          <MiniBar label="攻撃" value={deep.situational.attacking} />
+                          <MiniBar label="守備" value={deep.situational.defending} />
+                          <MiniBar label="トランジション" value={deep.situational.transition} />
+                          <div className={styles.infoNote}>{deep.situational.comment}</div>
+                        </div>
+                        <div className={styles.infoCard}>
+                          <div className={styles.infoTitle}>
+                            🦶 利き足バランス {deep.footedness.balance_pct}%
+                          </div>
+                          <MiniBar label="利き足" value={deep.footedness.dominant_foot_skill} />
+                          <MiniBar label="逆足" value={deep.footedness.weak_foot_skill} />
+                          <div className={styles.infoNote}>{deep.footedness.comment}</div>
+                        </div>
+                        <div className={styles.infoCard}>
+                          <div className={styles.infoTitle}>🧠 判断スピード</div>
+                          <MiniBar label="首振り・スキャン" value={deep.decision.scan_frequency} />
+                          <MiniBar label="判断の速さ" value={deep.decision.decision_speed} />
+                          <MiniBar
+                            label="受ける前の準備"
+                            value={deep.decision.pre_receive_prep}
+                          />
+                          <div className={styles.infoNote}>{deep.decision.comment}</div>
+                        </div>
+                        <div className={styles.infoCard}>
+                          <div className={styles.infoTitle}>🎯 セットプレー・空中戦</div>
+                          <MiniBar label="空中戦" value={deep.set_piece.aerial_duel} />
+                          <MiniBar label="プレースキック" value={deep.set_piece.delivery} />
+                          <MiniBar label="ボックス内存在感" value={deep.set_piece.box_presence} />
+                          <div className={styles.infoNote}>{deep.set_piece.comment}</div>
+                        </div>
+
+                        {/* 疲労耐性カーブ */}
+                        <div className={styles.infoCard}>
+                          <div className={styles.infoTitle}>
+                            🔋 疲労耐性（終盤維持率 {deep.fatigue.endurance_index}%）
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-end",
+                              gap: 6,
+                              height: 90,
+                              marginBottom: 4,
+                            }}
+                          >
+                            {deep.fatigue.curve.map((v, i) => (
+                              <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                                <div
+                                  style={{
+                                    height: `${(v / 100) * 70}px`,
+                                    background:
+                                      v >= 90
+                                        ? "var(--color-success)"
+                                        : v >= 80
+                                          ? "var(--color-accent)"
+                                          : "var(--color-warning)",
+                                    borderRadius: "4px 4px 0 0",
+                                  }}
+                                  title={`${v}%`}
+                                />
+                                <div
+                                  style={{
+                                    fontSize: "var(--text-xs)",
+                                    color: "var(--color-text-subtle)",
+                                  }}
+                                >
+                                  {i * 15}分
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className={styles.infoNote}>{deep.fatigue.comment}</div>
+                        </div>
+                      </div>
+                      <p
+                        style={{
+                          fontSize: "var(--text-xs)",
+                          color: "var(--color-text-subtle)",
+                          marginTop: "var(--space-2)",
+                        }}
+                      >
+                        ※ {deep.method_note}
+                      </p>
+                    </section>
+                  ) : null}
+
+                  {/* ── ゾーン占有ヒートマップ ── */}
+                  {deep ? (
+                    <section className={styles.section}>
+                      <h2 className={styles.subheading}>
+                        ゾーン占有ヒートマップ（行動範囲 {deep.heatmap.coverage}）
+                      </h2>
+                      <div
+                        className={styles.chartWrap}
+                        style={{ display: "block", padding: "var(--space-5)" }}
+                      >
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(3, 1fr)",
+                            gap: 4,
+                            maxWidth: 420,
+                            margin: "0 auto",
+                          }}
+                        >
+                          {[...deep.heatmap.zones].reverse().map((row, ri) =>
+                            row.map((v, ci) => {
+                              const max = Math.max(...deep.heatmap.zones.flat());
+                              const heat = max > 0 ? v / max : 0;
+                              return (
+                                <div
+                                  key={`${ri}-${ci}`}
+                                  style={{
+                                    aspectRatio: "3 / 2",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    borderRadius: "var(--radius-sm)",
+                                    background: `rgba(37, 99, 235, ${0.08 + heat * 0.72})`,
+                                    color: heat > 0.5 ? "#fff" : "var(--color-text)",
+                                    fontSize: "var(--text-sm)",
+                                    fontWeight: 600,
+                                  }}
+                                  title={`占有 ${v}%`}
+                                >
+                                  {v}%
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            maxWidth: 420,
+                            margin: "6px auto 0",
+                            fontSize: "var(--text-xs)",
+                            color: "var(--color-text-subtle)",
+                          }}
+                        >
+                          <span>← 自陣（上段が敵陣）</span>
+                          <span>{deep.heatmap.comment}</span>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {/* ── 市場価値・類似選手 ── */}
+                  {market || similar.length > 0 ? (
+                    <section className={styles.section}>
+                      <h2 className={styles.subheading}>市場価値・類似選手</h2>
+                      <div className={styles.infoGrid}>
+                        {market ? (
+                          <div className={styles.infoCard}>
+                            <div className={styles.infoTitle}>💰 移籍市場価値（参考レンジ）</div>
+                            <div
+                              style={{
+                                fontSize: "var(--text-xl)",
+                                fontWeight: 700,
+                                margin: "var(--space-2) 0",
+                              }}
+                            >
+                              ¥{(market.low_jpy / 10000).toLocaleString()}万 〜 ¥
+                              {(market.high_jpy / 10000).toLocaleString()}万
+                            </div>
+                            <div className={styles.infoStat}>
+                              <span>年齢係数</span>
+                              <span className={styles.infoStatVal}>×{market.age_factor}</span>
+                            </div>
+                            <div className={styles.infoStat}>
+                              <span>ポジション係数</span>
+                              <span className={styles.infoStatVal}>×{market.position_factor}</span>
+                            </div>
+                            <div className={styles.infoNote}>{market.comment}</div>
+                          </div>
+                        ) : null}
+                        {similar.length > 0 ? (
+                          <div className={styles.infoCard}>
+                            <div className={styles.infoTitle}>👥 類似選手（スコアベクトル）</div>
+                            {similar.map((s) => (
+                              <div key={s.athlete_id} className={styles.infoStat}>
+                                <span>
+                                  <Link
+                                    className={styles.link}
+                                    href={`/scout/athletes/${s.athlete_id}`}
+                                  >
+                                    {s.name}
+                                  </Link>{" "}
+                                  <span style={{ color: "var(--color-text-subtle)" }}>
+                                    {s.position} ・ 総合{s.total_score}
+                                  </span>
+                                </span>
+                                <span className={styles.infoStatVal}>類似度 {s.similarity}%</span>
+                              </div>
+                            ))}
+                            <div className={styles.infoNote}>
+                              4基礎スコアのコサイン類似度＋距離で算出（参考値）。
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </section>
+                  ) : null}
 
                   {/* ── 総合スコア推移 ── */}
                   <section className={styles.section}>

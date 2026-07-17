@@ -4,7 +4,7 @@
  * JWT は localStorage に保持する（Phase 2 で httpOnly Cookie / Supabase に移行）。
  */
 
-import { demoScores, demoSearch } from "./demo";
+import { demoDeepAnalysis, demoMarketValue, demoScores, demoSearch, demoSimilar } from "./demo";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const TOKEN_KEY = "sportstech_scout_token";
@@ -238,6 +238,66 @@ export interface AthleteScores {
 export function getAthleteScores(id: string): Promise<AthleteScores> {
   if (DEMO) return delay(demoScores(id));
   return request<AthleteScores>("GET", `/api/scouts/athletes/${id}/scores`);
+}
+
+// ── 深掘り分析(B#11-17,19) ──────────────────────────────────────────
+
+export interface DeepAnalysis {
+  athlete_id: string;
+  duel: { attacking_1v1: number; defending_1v1: number; pressing: number; comment: string };
+  footedness: {
+    dominant_foot_skill: number;
+    weak_foot_skill: number;
+    balance_pct: number;
+    comment: string;
+  };
+  situational: { attacking: number; defending: number; transition: number; comment: string };
+  heatmap: { zones: number[][]; coverage: number; comment: string };
+  decision: {
+    scan_frequency: number;
+    decision_speed: number;
+    pre_receive_prep: number;
+    comment: string;
+  };
+  set_piece: { aerial_duel: number; delivery: number; box_presence: number; comment: string };
+  fatigue: { curve: number[]; endurance_index: number; comment: string };
+  method_note: string;
+  is_reference_score: boolean;
+}
+
+export function getDeepAnalysis(id: string): Promise<DeepAnalysis> {
+  if (DEMO) return delay(demoDeepAnalysis(id));
+  return request<DeepAnalysis>("GET", `/api/scouts/athletes/${id}/deep-analysis`);
+}
+
+// ── 類似選手(C#28) / 市場価値(C#29) ────────────────────────────────
+
+export interface SimilarAthlete {
+  athlete_id: string;
+  name: string;
+  position: string | null;
+  similarity: number;
+  total_score: number;
+  is_reference_score: boolean;
+}
+
+export function getSimilarAthletes(id: string): Promise<SimilarAthlete[]> {
+  if (DEMO) return delay(demoSimilar(id));
+  return request<SimilarAthlete[]>("GET", `/api/scouts/athletes/${id}/similar`);
+}
+
+export interface MarketValue {
+  low_jpy: number;
+  high_jpy: number;
+  age_factor: number;
+  position_factor: number;
+  comment: string;
+  is_reference_score: boolean;
+}
+
+export function getMarketValue(id: string): Promise<MarketValue> {
+  if (DEMO) return delay(demoMarketValue(id));
+  return request<MarketValue>("GET", `/api/scouts/athletes/${id}/market-value`);
 }
 
 // ── ウォッチリスト(C#22) ────────────────────────────────────────────

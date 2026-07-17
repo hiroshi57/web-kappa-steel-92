@@ -10,12 +10,15 @@ import type {
   Ability,
   AthleteScores,
   AthleteSearchItem,
+  DeepAnalysis,
   Health,
+  MarketValue,
   Nutrition,
   OverseasReadiness,
   PhysicalPoint,
   Prediction,
   ScoreSnapshot,
+  SimilarAthlete,
 } from "./api";
 
 interface DemoAthlete {
@@ -307,6 +310,219 @@ export function demoScores(id: string): AthleteScores {
     prediction,
     health,
     overseas,
+    is_reference_score: true,
+  };
+}
+
+// ── 深掘り分析(B#11-17,19) — backend deep_analysis.py の移植 ─────────
+
+function clamp(v: number, lo = 0, hi = 100): number {
+  return Math.round(Math.max(lo, Math.min(hi, v)) * 10) / 10;
+}
+
+/** 4基礎スコアの加重合成 */
+function mix(b: [number, number, number, number], w: [number, number, number, number], bias = 0) {
+  return clamp(b[0] * w[0] + b[1] * w[1] + b[2] * w[2] + b[3] * w[3] + bias);
+}
+
+// ポジション別のゾーン占有基準（自陣→敵陣 × 左/中/右, %）
+const ZONE_BASE: Record<string, number[][]> = {
+  FW: [
+    [2, 3, 2],
+    [8, 12, 8],
+    [18, 29, 18],
+  ],
+  MF: [
+    [5, 8, 5],
+    [15, 24, 15],
+    [8, 12, 8],
+  ],
+  DF: [
+    [16, 26, 16],
+    [10, 16, 10],
+    [2, 2, 2],
+  ],
+  GK: [
+    [10, 78, 10],
+    [0, 2, 0],
+    [0, 0, 0],
+  ],
+};
+
+export function demoDeepAnalysis(id: string): DeepAnalysis {
+  const a = ATHLETES.find((x) => x.id === id) ?? ATHLETES[0];
+  const b = a.base; // [sprint, ball, positioning, body]
+  const [sp, bc, po, bo] = b;
+
+  // B#12 対人
+  const atk = mix(b, [0.3, 0.5, 0, 0.2]);
+  const dfd = mix(b, [0.2, 0, 0.4, 0.4]);
+  const duel = {
+    attacking_1v1: atk,
+    defending_1v1: dfd,
+    pressing: mix(b, [0.5, 0, 0.3, 0.2], -1),
+    comment:
+      atk >= dfd + 10
+        ? "仕掛け優位型。攻撃の1対1で違いを作れる。"
+        : dfd >= atk + 10
+          ? "対人守備型。1対1の対応と寄せに強みがある。"
+          : "攻守バランス型。局面を選ばず1対1で戦える。",
+  };
+
+  // B#13 利き足
+  const dominant = clamp(bc + 2);
+  const weak = clamp(bc - 8 - Math.max(0, bc - bo) * 0.5);
+  const balance = clamp((weak / dominant) * 100);
+  const footedness = {
+    dominant_foot_skill: dominant,
+    weak_foot_skill: weak,
+    balance_pct: balance,
+    comment:
+      balance >= 85
+        ? "両足遜色なし。逆足でもプレー選択を狭めない。"
+        : balance >= 70
+          ? "逆足も実用レベル。仕上げの精度向上で幅が広がる。"
+          : "利き足依存が強め。逆足のファーストタッチ強化を推奨。",
+  };
+
+  // B#14 局面別
+  const sAtk = mix(b, [0.2, 0.5, 0.3, 0]);
+  const sDfd = mix(b, [0.2, 0, 0.5, 0.3]);
+  const sTrn = mix(b, [0.5, 0.2, 0.3, 0]);
+  const best =
+    sAtk >= sDfd && sAtk >= sTrn
+      ? (["攻撃", sAtk] as const)
+      : sDfd >= sTrn
+        ? (["守備", sDfd] as const)
+        : (["トランジション", sTrn] as const);
+  const situational = {
+    attacking: sAtk,
+    defending: sDfd,
+    transition: sTrn,
+    comment: `最も強みが出るのは${best[0]}局面（${best[1]}）。`,
+  };
+
+  // B#15 ヒートマップ
+  const zoneBase = ZONE_BASE[a.position.toUpperCase()] ?? ZONE_BASE.MF;
+  const mobility = (sp + po) / 2;
+  const spread = clamp((mobility - 50) / 50, 0, 1) * 0.3;
+  const flat = 100 / 9;
+  const zones = zoneBase.map((row) =>
+    row.map((v) => Math.round((v * (1 - spread) + flat * spread) * 10) / 10)
+  );
+  const coverage = clamp(40 + mobility * 0.6);
+  const heatmap = {
+    zones,
+    coverage,
+    comment: `行動範囲スコア ${coverage}。ポジション基準にスプリント補正した推定分布。`,
+  };
+
+  // B#16 判断
+  const scan = mix(b, [0, 0.2, 0.8, 0], -3);
+  const speedD = mix(b, [0.2, 0.3, 0.5, 0], -1);
+  const prep = mix(b, [0, 0, 0.6, 0.4], -2);
+  const avgD = (scan + speedD + prep) / 3;
+  const decision = {
+    scan_frequency: scan,
+    decision_speed: speedD,
+    pre_receive_prep: prep,
+    comment:
+      avgD >= 75
+        ? "認知→判断→実行が速い。プレッシャー下でも選択肢を保てる。"
+        : avgD >= 60
+          ? "判断は平均以上。受ける前のスキャン頻度を上げると更に伸びる。"
+          : "判断に改善余地。首振り・体の向きの習慣化を推奨。",
+  };
+
+  // B#17 セットプレー（身長補正）
+  const hBonus = clamp((a.height_cm - 170) * 0.5, -8, 8);
+  const aerial = clamp(mix(b, [0, 0, 0.4, 0.6], -3) + hBonus);
+  const set_piece = {
+    aerial_duel: aerial,
+    delivery: mix(b, [0, 0.8, 0.2, 0], -4),
+    box_presence: clamp(mix(b, [0, 0, 0.5, 0.5], -2) + hBonus * 0.5),
+    comment:
+      aerial >= 70
+        ? "空中戦に強み。セットプレーのターゲットになれる。"
+        : "空中戦は平均圏。ポジショニングで補うタイプ。",
+  };
+
+  // B#19 疲労カーブ
+  const stamina = (sp * 0.5 + bo * 0.5) / 100;
+  const stability = 0.8; // デモは安定性80相当
+  const decay = 4 * (1 - (stamina * 0.6 + stability * 0.4));
+  const curve = [0, 1, 2, 3, 4, 5].map((i) => Math.round(Math.max(60, 100 - decay * i) * 10) / 10);
+  const endurance = curve[curve.length - 1];
+  const fatigue = {
+    curve,
+    endurance_index: endurance,
+    comment:
+      endurance >= 90
+        ? "終盤も出力が落ちにくい。フル出場に耐えるスタミナ。"
+        : endurance >= 80
+          ? "標準的な持久力。70分以降の強度管理がポイント。"
+          : "終盤の低下が大きめ。交代カードや持久系トレの検討を。",
+  };
+
+  return {
+    athlete_id: a.id,
+    duel,
+    footedness,
+    situational,
+    heatmap,
+    decision,
+    set_piece,
+    fatigue,
+    method_note:
+      "Phase 1: 4基礎スコア・履歴・体格からの導出値。実測トラッキング導入時に実測値へ置換予定。",
+    is_reference_score: true,
+  };
+}
+
+// ── 類似選手(C#28) / 市場価値(C#29) ─────────────────────────────────
+
+export function demoSimilar(id: string): SimilarAthlete[] {
+  const target = ATHLETES.find((x) => x.id === id) ?? ATHLETES[0];
+  const tv = target.base;
+  return ATHLETES.filter((x) => x.id !== target.id)
+    .map((x) => {
+      const v = x.base;
+      const dot = tv[0] * v[0] + tv[1] * v[1] + tv[2] * v[2] + tv[3] * v[3];
+      const na = Math.sqrt(tv.reduce((s, y) => s + y * y, 0));
+      const nb = Math.sqrt(v.reduce((s, y) => s + y * y, 0));
+      const cos = na && nb ? dot / (na * nb) : 0;
+      const dist = Math.sqrt(tv.reduce((s, y, i) => s + (y - v[i]) ** 2, 0));
+      const distScore = Math.max(0, 1 - dist / 50);
+      return {
+        athlete_id: x.id,
+        name: x.name,
+        position: x.position,
+        similarity: Math.round(((cos + distScore) / 2) * 1000) / 10,
+        total_score: total(x.base, x.position),
+        is_reference_score: true as const,
+      };
+    })
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, 5);
+}
+
+export function demoMarketValue(id: string): MarketValue {
+  const a = ATHLETES.find((x) => x.id === id) ?? ATHLETES[0];
+  const myTotal = total(a.base, a.position);
+  const ratio = Math.max(0, Math.min(1, myTotal / 100));
+  const base = ratio ** 2 * 10_000_000;
+  const af = a.age <= 15 ? 1.3 : a.age <= 18 ? 1.25 : a.age <= 21 ? 1.15 : 1.0;
+  const pf = ({ FW: 1.2, MF: 1.1, DF: 1.0, GK: 0.9 } as Record<string, number>)[
+    a.position.toUpperCase()
+  ] ?? 1.0;
+  const mid = base * af * pf;
+  return {
+    low_jpy: Math.round((mid * 0.6) / 10000) * 10000,
+    high_jpy: Math.round((mid * 1.5) / 10000) * 10000,
+    age_factor: af,
+    position_factor: pf,
+    comment:
+      "スコア・年齢・ポジションからの参考レンジ。実績・出場歴・市場動向は未反映のため、交渉・契約の根拠には使用しないこと。",
     is_reference_score: true,
   };
 }

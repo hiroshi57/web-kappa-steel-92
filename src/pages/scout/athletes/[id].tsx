@@ -3,9 +3,12 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import FatigueCurveChart from "@/components/FatigueCurveChart";
+import PitchHeatmap from "@/components/PitchHeatmap";
 import RadarChart, { type RadarAxis } from "@/components/RadarChart";
 import ScoreHistoryChart from "@/components/ScoreHistoryChart";
 import ScoreRing from "@/components/ScoreRing";
+import StatBars from "@/components/StatBars";
 import {
   ApiError,
   type AthleteScores,
@@ -19,6 +22,7 @@ import {
   type SimilarAthlete,
 } from "@/lib/api";
 import styles from "@/styles/dashboard.module.css";
+import ins from "@/styles/insights.module.css";
 
 const METRICS = [
   { key: "sprint_score", label: "スプリント" },
@@ -29,34 +33,9 @@ const METRICS = [
 
 type MetricKey = (typeof METRICS)[number]["key"];
 
-/** 小型スコアバー（深掘り分析用） */
-function MiniBar({ label, value }: { label: string; value: number }) {
-  const r = ratingLabel(value);
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-sm)" }}>
-        <span>{label}</span>
-        <strong style={{ color: r.color }}>{value}</strong>
-      </div>
-      <div
-        style={{
-          height: 6,
-          background: "var(--color-border)",
-          borderRadius: "var(--radius-full)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            width: `${Math.min(100, value)}%`,
-            height: "100%",
-            background: r.color,
-            borderRadius: "var(--radius-full)",
-          }}
-        />
-      </div>
-    </div>
-  );
+/** 万円表記（¥1,200万 のように） */
+function manYen(jpy: number): string {
+  return `¥${(jpy / 10000).toLocaleString()}万`;
 }
 
 function ratingLabel(v: number): { text: string; color: string } {
@@ -530,219 +509,191 @@ export default function AthleteDetailPage() {
                     </div>
                   </section>
 
-                  {/* ── 深掘り分析（対人・局面・利き足・判断・セットプレー） ── */}
+                  {/* ── 戦術・プレースタイル分析（B#12-17,19） ── */}
                   {deep ? (
                     <section className={styles.section}>
-                      <h2 className={styles.subheading}>深掘り分析（対人・局面・判断）</h2>
-                      <div className={styles.infoGrid}>
-                        <div className={styles.infoCard}>
-                          <div className={styles.infoTitle}>⚔️ 対人プレー（1対1）</div>
-                          <MiniBar label="仕掛け（攻撃）" value={deep.duel.attacking_1v1} />
-                          <MiniBar label="対応（守備）" value={deep.duel.defending_1v1} />
-                          <MiniBar label="寄せ・プレス" value={deep.duel.pressing} />
-                          <div className={styles.infoNote}>{deep.duel.comment}</div>
-                        </div>
-                        <div className={styles.infoCard}>
-                          <div className={styles.infoTitle}>🔄 局面別評価</div>
-                          <MiniBar label="攻撃" value={deep.situational.attacking} />
-                          <MiniBar label="守備" value={deep.situational.defending} />
-                          <MiniBar label="トランジション" value={deep.situational.transition} />
-                          <div className={styles.infoNote}>{deep.situational.comment}</div>
-                        </div>
-                        <div className={styles.infoCard}>
-                          <div className={styles.infoTitle}>
-                            🦶 利き足バランス {deep.footedness.balance_pct}%
+                      <h2 className={styles.subheading}>戦術・プレースタイル分析</h2>
+                      <div className={ins.grid}>
+                        {/* 対人プレー */}
+                        <div className={ins.panel}>
+                          <div className={ins.panelHead}>
+                            <span className={ins.panelTitle}>
+                              <span className={ins.panelIcon}>⚔️</span>対人プレー（1対1）
+                            </span>
                           </div>
-                          <MiniBar label="利き足" value={deep.footedness.dominant_foot_skill} />
-                          <MiniBar label="逆足" value={deep.footedness.weak_foot_skill} />
-                          <div className={styles.infoNote}>{deep.footedness.comment}</div>
-                        </div>
-                        <div className={styles.infoCard}>
-                          <div className={styles.infoTitle}>🧠 判断スピード</div>
-                          <MiniBar label="首振り・スキャン" value={deep.decision.scan_frequency} />
-                          <MiniBar label="判断の速さ" value={deep.decision.decision_speed} />
-                          <MiniBar
-                            label="受ける前の準備"
-                            value={deep.decision.pre_receive_prep}
+                          <StatBars
+                            items={[
+                              { label: "仕掛け（攻撃）", value: deep.duel.attacking_1v1 },
+                              { label: "対応（守備）", value: deep.duel.defending_1v1 },
+                              { label: "寄せ・プレス強度", value: deep.duel.pressing },
+                            ]}
                           />
-                          <div className={styles.infoNote}>{deep.decision.comment}</div>
+                          <p className={ins.comment}>{deep.duel.comment}</p>
                         </div>
-                        <div className={styles.infoCard}>
-                          <div className={styles.infoTitle}>🎯 セットプレー・空中戦</div>
-                          <MiniBar label="空中戦" value={deep.set_piece.aerial_duel} />
-                          <MiniBar label="プレースキック" value={deep.set_piece.delivery} />
-                          <MiniBar label="ボックス内存在感" value={deep.set_piece.box_presence} />
-                          <div className={styles.infoNote}>{deep.set_piece.comment}</div>
+
+                        {/* 局面別 */}
+                        <div className={ins.panel}>
+                          <div className={ins.panelHead}>
+                            <span className={ins.panelTitle}>
+                              <span className={ins.panelIcon}>🔄</span>局面別評価
+                            </span>
+                          </div>
+                          <StatBars
+                            items={[
+                              { label: "攻撃局面", value: deep.situational.attacking },
+                              { label: "守備局面", value: deep.situational.defending },
+                              { label: "トランジション", value: deep.situational.transition },
+                            ]}
+                          />
+                          <p className={ins.comment}>{deep.situational.comment}</p>
+                        </div>
+
+                        {/* 利き足バランス */}
+                        <div className={ins.panel}>
+                          <div className={ins.panelHead}>
+                            <span className={ins.panelTitle}>
+                              <span className={ins.panelIcon}>🦶</span>両足バランス
+                            </span>
+                            <span className={ins.badge}>逆足比 {deep.footedness.balance_pct}%</span>
+                          </div>
+                          <StatBars
+                            items={[
+                              { label: "利き足の技術", value: deep.footedness.dominant_foot_skill },
+                              { label: "逆足の技術", value: deep.footedness.weak_foot_skill },
+                            ]}
+                          />
+                          <p className={ins.comment}>{deep.footedness.comment}</p>
+                        </div>
+
+                        {/* 判断スピード */}
+                        <div className={ins.panel}>
+                          <div className={ins.panelHead}>
+                            <span className={ins.panelTitle}>
+                              <span className={ins.panelIcon}>🧠</span>判断スピード・認知
+                            </span>
+                          </div>
+                          <StatBars
+                            items={[
+                              { label: "首振り・スキャン頻度", value: deep.decision.scan_frequency },
+                              { label: "判断の速さ", value: deep.decision.decision_speed },
+                              { label: "受ける前の準備", value: deep.decision.pre_receive_prep },
+                            ]}
+                          />
+                          <p className={ins.comment}>{deep.decision.comment}</p>
+                        </div>
+
+                        {/* セットプレー */}
+                        <div className={ins.panel}>
+                          <div className={ins.panelHead}>
+                            <span className={ins.panelTitle}>
+                              <span className={ins.panelIcon}>🎯</span>セットプレー・空中戦
+                            </span>
+                          </div>
+                          <StatBars
+                            items={[
+                              { label: "空中戦", value: deep.set_piece.aerial_duel },
+                              { label: "プレースキック精度", value: deep.set_piece.delivery },
+                              { label: "ボックス内の存在感", value: deep.set_piece.box_presence },
+                            ]}
+                          />
+                          <p className={ins.comment}>{deep.set_piece.comment}</p>
                         </div>
 
                         {/* 疲労耐性カーブ */}
-                        <div className={styles.infoCard}>
-                          <div className={styles.infoTitle}>
-                            🔋 疲労耐性（終盤維持率 {deep.fatigue.endurance_index}%）
+                        <div className={`${ins.panel} ${ins.panelWide}`}>
+                          <div className={ins.panelHead}>
+                            <span className={ins.panelTitle}>
+                              <span className={ins.panelIcon}>🔋</span>疲労耐性カーブ（試合内の出力維持）
+                            </span>
+                            <span className={ins.badge}>
+                              終盤維持 {deep.fatigue.endurance_index}%
+                            </span>
                           </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "flex-end",
-                              gap: 6,
-                              height: 90,
-                              marginBottom: 4,
-                            }}
-                          >
-                            {deep.fatigue.curve.map((v, i) => (
-                              <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                                <div
-                                  style={{
-                                    height: `${(v / 100) * 70}px`,
-                                    background:
-                                      v >= 90
-                                        ? "var(--color-success)"
-                                        : v >= 80
-                                          ? "var(--color-accent)"
-                                          : "var(--color-warning)",
-                                    borderRadius: "4px 4px 0 0",
-                                  }}
-                                  title={`${v}%`}
-                                />
-                                <div
-                                  style={{
-                                    fontSize: "var(--text-xs)",
-                                    color: "var(--color-text-subtle)",
-                                  }}
-                                >
-                                  {i * 15}分
-                                </div>
-                              </div>
-                            ))}
+                          <FatigueCurveChart curve={deep.fatigue.curve} />
+                          <p className={ins.comment}>{deep.fatigue.comment}</p>
+                        </div>
+
+                        {/* ゾーン占有ヒートマップ */}
+                        <div className={`${ins.panel} ${ins.panelWide}`}>
+                          <div className={ins.panelHead}>
+                            <span className={ins.panelTitle}>
+                              <span className={ins.panelIcon}>🗺️</span>ゾーン占有ヒートマップ
+                            </span>
+                            <span className={ins.badge}>行動範囲 {deep.heatmap.coverage}</span>
                           </div>
-                          <div className={styles.infoNote}>{deep.fatigue.comment}</div>
+                          <PitchHeatmap zones={deep.heatmap.zones} coverage={deep.heatmap.coverage} />
+                          <p className={ins.comment}>{deep.heatmap.comment}</p>
                         </div>
                       </div>
-                      <p
-                        style={{
-                          fontSize: "var(--text-xs)",
-                          color: "var(--color-text-subtle)",
-                          marginTop: "var(--space-2)",
-                        }}
-                      >
-                        ※ {deep.method_note}
-                      </p>
+                      <p className={ins.footnote}>※ {deep.method_note}</p>
                     </section>
                   ) : null}
 
-                  {/* ── ゾーン占有ヒートマップ ── */}
-                  {deep ? (
-                    <section className={styles.section}>
-                      <h2 className={styles.subheading}>
-                        ゾーン占有ヒートマップ（行動範囲 {deep.heatmap.coverage}）
-                      </h2>
-                      <div
-                        className={styles.chartWrap}
-                        style={{ display: "block", padding: "var(--space-5)" }}
-                      >
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(3, 1fr)",
-                            gap: 4,
-                            maxWidth: 420,
-                            margin: "0 auto",
-                          }}
-                        >
-                          {[...deep.heatmap.zones].reverse().map((row, ri) =>
-                            row.map((v, ci) => {
-                              const max = Math.max(...deep.heatmap.zones.flat());
-                              const heat = max > 0 ? v / max : 0;
-                              return (
-                                <div
-                                  key={`${ri}-${ci}`}
-                                  style={{
-                                    aspectRatio: "3 / 2",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    borderRadius: "var(--radius-sm)",
-                                    background: `rgba(37, 99, 235, ${0.08 + heat * 0.72})`,
-                                    color: heat > 0.5 ? "#fff" : "var(--color-text)",
-                                    fontSize: "var(--text-sm)",
-                                    fontWeight: 600,
-                                  }}
-                                  title={`占有 ${v}%`}
-                                >
-                                  {v}%
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            maxWidth: 420,
-                            margin: "6px auto 0",
-                            fontSize: "var(--text-xs)",
-                            color: "var(--color-text-subtle)",
-                          }}
-                        >
-                          <span>← 自陣（上段が敵陣）</span>
-                          <span>{deep.heatmap.comment}</span>
-                        </div>
-                      </div>
-                    </section>
-                  ) : null}
-
-                  {/* ── 市場価値・類似選手 ── */}
+                  {/* ── 市場価値・類似選手（C#28/29） ── */}
                   {market || similar.length > 0 ? (
                     <section className={styles.section}>
                       <h2 className={styles.subheading}>市場価値・類似選手</h2>
-                      <div className={styles.infoGrid}>
+                      <div className={ins.grid}>
                         {market ? (
-                          <div className={styles.infoCard}>
-                            <div className={styles.infoTitle}>💰 移籍市場価値（参考レンジ）</div>
-                            <div
-                              style={{
-                                fontSize: "var(--text-xl)",
-                                fontWeight: 700,
-                                margin: "var(--space-2) 0",
-                              }}
-                            >
-                              ¥{(market.low_jpy / 10000).toLocaleString()}万 〜 ¥
-                              {(market.high_jpy / 10000).toLocaleString()}万
+                          <div className={ins.panel}>
+                            <div className={ins.panelHead}>
+                              <span className={ins.panelTitle}>
+                                <span className={ins.panelIcon}>💰</span>移籍市場価値
+                              </span>
+                              <span className={ins.badge}>参考レンジ</span>
                             </div>
-                            <div className={styles.infoStat}>
-                              <span>年齢係数</span>
-                              <span className={styles.infoStatVal}>×{market.age_factor}</span>
+                            <div className={ins.valueRange}>
+                              <span className={ins.valueNum}>{manYen(market.low_jpy)}</span>
+                              <span className={ins.valueUnit}>〜</span>
+                              <span className={ins.valueNum}>{manYen(market.high_jpy)}</span>
                             </div>
-                            <div className={styles.infoStat}>
+                            <div className={ins.factorRow}>
+                              <span>年齢プレミア係数</span>
+                              <span className={ins.factorVal}>×{market.age_factor}</span>
+                            </div>
+                            <div className={ins.factorRow}>
                               <span>ポジション係数</span>
-                              <span className={styles.infoStatVal}>×{market.position_factor}</span>
+                              <span className={ins.factorVal}>×{market.position_factor}</span>
                             </div>
-                            <div className={styles.infoNote}>{market.comment}</div>
+                            <p className={ins.comment}>{market.comment}</p>
                           </div>
                         ) : null}
                         {similar.length > 0 ? (
-                          <div className={styles.infoCard}>
-                            <div className={styles.infoTitle}>👥 類似選手（スコアベクトル）</div>
-                            {similar.map((s) => (
-                              <div key={s.athlete_id} className={styles.infoStat}>
-                                <span>
-                                  <Link
-                                    className={styles.link}
-                                    href={`/scout/athletes/${s.athlete_id}`}
-                                  >
-                                    {s.name}
-                                  </Link>{" "}
-                                  <span style={{ color: "var(--color-text-subtle)" }}>
-                                    {s.position} ・ 総合{s.total_score}
+                          <div className={ins.panel}>
+                            <div className={ins.panelHead}>
+                              <span className={ins.panelTitle}>
+                                <span className={ins.panelIcon}>👥</span>類似選手
+                              </span>
+                              <span className={ins.badge}>スコアベクトル近傍</span>
+                            </div>
+                            {similar.map((s, i) => (
+                              <div key={s.athlete_id} className={ins.similarRow}>
+                                <span className={ins.similarMain}>
+                                  <span className={ins.similarRank}>{i + 1}</span>
+                                  <span style={{ minWidth: 0 }}>
+                                    <Link
+                                      className={ins.similarName}
+                                      href={`/scout/athletes/${s.athlete_id}`}
+                                    >
+                                      {s.name}
+                                    </Link>
+                                    <span className={ins.similarMeta}>
+                                      {" "}
+                                      {[s.position, `総合 ${s.total_score}`]
+                                        .filter(Boolean)
+                                        .join(" ・ ")}
+                                    </span>
                                   </span>
                                 </span>
-                                <span className={styles.infoStatVal}>類似度 {s.similarity}%</span>
+                                <span className={ins.similarScore}>
+                                  <span className={ins.similarSim}>{s.similarity}%</span>
+                                  <span className={ins.similarSimLabel}>類似度</span>
+                                </span>
                               </div>
                             ))}
-                            <div className={styles.infoNote}>
-                              4基礎スコアのコサイン類似度＋距離で算出（参考値）。
-                            </div>
+                            <p className={ins.comment}>
+                              4基礎スコアのコサイン類似度＋ユークリッド距離で算出（参考値）。
+                            </p>
                           </div>
                         ) : null}
                       </div>

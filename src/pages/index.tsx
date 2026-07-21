@@ -10,7 +10,8 @@ const geistSans = Geist({
 
 const NAV_LINKS = [
   { label: "選手を探す", href: "/scout/search" },
-  { label: "選手を登録する", href: "/athlete/register" },
+  { label: "料金プラン", href: "/pricing" },
+  { label: "選手/保護者マイページ", href: "/athlete/dashboard" },
   { label: "ログイン", href: "/auth/login" },
 ] as const;
 

@@ -139,6 +139,9 @@ export default function ScoutSearchPage() {
             <Link className={styles.link} href="/billing">
               💳 契約
             </Link>
+            <Link className={styles.link} href="/scout/onboarding">
+              ❓ はじめかた
+            </Link>
             <button className={styles.link} onClick={handleLogout}>
               ログアウト
             </button>

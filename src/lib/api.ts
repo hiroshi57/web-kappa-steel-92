@@ -644,6 +644,93 @@ export function resetSubscriptionDemo(): Promise<Subscription> {
   return delay(sub);
 }
 
+// ── 選手/保護者向け: 閲覧履歴開示(C#30) ──────────────────────────────
+
+export interface ProfileView {
+  viewer_role: "scout" | "coach";
+  viewed_at: string;
+}
+
+export interface ProfileViewSummary {
+  total_views: number;
+  views_last_30d: number;
+  recent: ProfileView[];
+}
+
+/** 自分（選手）のカルテを誰(ロール)がいつ閲覧したか。 */
+export function getMyProfileViews(): Promise<ProfileViewSummary> {
+  if (DEMO) {
+    const now = Date.now();
+    const day = 86400000;
+    const recent: ProfileView[] = [
+      { viewer_role: "scout", viewed_at: new Date(now - 1 * day).toISOString() },
+      { viewer_role: "scout", viewed_at: new Date(now - 3 * day).toISOString() },
+      { viewer_role: "coach", viewed_at: new Date(now - 6 * day).toISOString() },
+      { viewer_role: "scout", viewed_at: new Date(now - 12 * day).toISOString() },
+      { viewer_role: "scout", viewed_at: new Date(now - 40 * day).toISOString() },
+    ];
+    return delay({
+      total_views: 18,
+      views_last_30d: recent.filter((r) => now - Date.parse(r.viewed_at) <= 30 * day).length + 9,
+      recent,
+    });
+  }
+  return request<ProfileViewSummary>("GET", "/api/athletes/me/profile-views");
+}
+
+// ── 保護者同意・プライバシー(D#32/33/35) ─────────────────────────────
+
+export interface GuardianConsent {
+  is_minor: boolean;
+  consent_granted: boolean;
+  guardian_name: string | null;
+  updated_at: string | null;
+  video_retention_days: number;
+}
+
+const DEMO_CONSENT_KEY = "sportstech_demo_consent";
+
+function demoDefaultConsent(): GuardianConsent {
+  return {
+    is_minor: true,
+    consent_granted: true,
+    guardian_name: "保護者 花子",
+    updated_at: new Date().toISOString(),
+    video_retention_days: 90,
+  };
+}
+
+export function getGuardianConsent(): Promise<GuardianConsent> {
+  if (DEMO) {
+    if (typeof window === "undefined") return delay(demoDefaultConsent());
+    try {
+      const raw = window.localStorage.getItem(DEMO_CONSENT_KEY);
+      return delay(raw ? (JSON.parse(raw) as GuardianConsent) : demoDefaultConsent());
+    } catch {
+      return delay(demoDefaultConsent());
+    }
+  }
+  return request<GuardianConsent>("GET", "/api/athletes/me/consent");
+}
+
+export function setGuardianConsent(granted: boolean): Promise<GuardianConsent> {
+  if (DEMO) {
+    const cur = demoDefaultConsent();
+    const next: GuardianConsent = {
+      ...cur,
+      consent_granted: granted,
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(DEMO_CONSENT_KEY, JSON.stringify(next));
+    }
+    return delay(next);
+  }
+  return request<GuardianConsent>("PATCH", "/api/athletes/me/consent", {
+    consent_granted: granted,
+  });
+}
+
 // ── 商談パイプライン(C#25) / 共有ノート(C#26) / 動画クリップ(C#27) ──
 
 export type ContactStage =

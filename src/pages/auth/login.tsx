@@ -24,7 +24,7 @@ export default function LoginPage() {
         setError("スカウト/コーチ用のダッシュボードです。選手はモバイルアプリをご利用ください。");
         return;
       }
-      await router.push("/scout/search");
+      await router.push("/scout/onboarding");
     } catch (err) {
       setToken(null);
       setError(err instanceof ApiError ? err.detail : "ログインに失敗しました");

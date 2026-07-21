@@ -63,11 +63,40 @@ async function request<T>(
     } catch {
       // ignore non-JSON
     }
+    // 401/403（トークン失効・未認証）は集中処理でログインへ誘導する
+    if (res.status === 401) {
+      handleUnauthorized();
+    }
     throw new ApiError(res.status, detail);
   }
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** トークン失効時: トークンを破棄しログイン画面へ誘導する（多重発火を防ぐ）。 */
+let redirectingToLogin = false;
+function handleUnauthorized(): void {
+  if (typeof window === "undefined") return;
+  setToken(null);
+  const path = window.location.pathname;
+  if (redirectingToLogin || path.startsWith("/auth/")) return;
+  redirectingToLogin = true;
+  const next = encodeURIComponent(path + window.location.search);
+  window.location.assign(`/auth/login?next=${next}`);
+}
+
+/** ログアウト（トークン破棄＋サーバ通知＋ログインへ）。 */
+export async function logout(): Promise<void> {
+  if (!DEMO) {
+    try {
+      await request<void>("POST", "/api/auth/logout");
+    } catch {
+      // サーバ通知が失敗してもクライアント側は破棄する
+    }
+  }
+  setToken(null);
+  if (typeof window !== "undefined") window.location.assign("/auth/login");
 }
 
 // ── 認証 ────────────────────────────────────────────────────────────

@@ -77,6 +77,22 @@ export default function ScoutOnboardingPage() {
             上から順に進めるのがおすすめです。
           </p>
 
+          <div style={{ marginBottom: "var(--space-5)" }}>
+            <Link
+              href="/scout/search?tour=1"
+              className={ins.btn}
+              style={{
+                display: "inline-block",
+                padding: "var(--space-3) var(--space-5)",
+                borderRadius: "var(--radius-md)",
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
+              ▶ 60秒デモツアーを開始
+            </Link>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
             {STEPS.map((s, i) => (
               <div

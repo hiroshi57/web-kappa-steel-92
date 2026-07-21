@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import GuideTour, { type TourStep } from "@/components/GuideTour";
 import ScoreRing from "@/components/ScoreRing";
 import {
   addWatchlist,
@@ -11,8 +12,8 @@ import {
   createSavedSearch,
   getToken,
   listWatchlist,
+  logout,
   searchAthletes,
-  setToken,
   type SearchFilters,
 } from "@/lib/api";
 import styles from "@/styles/dashboard.module.css";
@@ -50,9 +51,48 @@ export default function ScoutSearchPage() {
   }, [router, runSearch]);
 
   const handleLogout = () => {
-    setToken(null);
-    void router.push("/auth/login");
+    void logout();
   };
+
+  // 営業デモ用ガイドツアー（?tour=1 で強制起動、初回は自動起動）
+  const [tourSignal, setTourSignal] = useState(0);
+  useEffect(() => {
+    if (router.query.tour === "1") {
+      void Promise.resolve().then(() => setTourSignal((s) => s + 1));
+    }
+  }, [router.query.tour]);
+
+  const TOUR_STEPS: TourStep[] = [
+    {
+      title: "ようこそ sports-tech へ",
+      body: "育成年代の才能をAIスコアで発見し、商談まで一気通貫で管理できます。主要機能を60秒でご案内します。",
+    },
+    {
+      selector: '[data-tour="stats"]',
+      title: "検索結果のサマリー",
+      body: "該当選手数・分析済み数・平均/最高スコアをひと目で把握できます。",
+    },
+    {
+      selector: '[data-tour="filters"]',
+      title: "条件で絞り込む",
+      body: "ポジション・地域・最低スコアで公開選手を横断検索。条件は保存して新着アラートにできます。",
+    },
+    {
+      selector: '[data-tour="results"]',
+      title: "選手カードから詳細へ",
+      body: "各カードから選手カルテへ。14項目の詳細分析・成長予測・市場価値まで確認できます。",
+    },
+    {
+      selector: '[data-tour="watchlist"]',
+      title: "ウォッチリストで追跡",
+      body: "気になる選手を保存し、タグやメモで整理できます。",
+    },
+    {
+      selector: '[data-tour="pipeline"]',
+      title: "商談パイプラインで管理",
+      body: "接触〜獲得までをカンバンで管理。チームで所見を共有できます。まずは触ってみましょう！",
+    },
+  ];
 
   // 比較対象の選択（最大4人）
   const [compareIds, setCompareIds] = useState<string[]>([]);
@@ -127,13 +167,13 @@ export default function ScoutSearchPage() {
             sports-tech スカウト
           </span>
           <span style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
-            <Link className={styles.link} href="/scout/watchlist">
+            <Link className={styles.link} href="/scout/watchlist" data-tour="watchlist">
               ★ ウォッチリスト
             </Link>
             <Link className={styles.link} href="/scout/saved">
               🔔 保存条件
             </Link>
-            <Link className={styles.link} href="/scout/pipeline">
+            <Link className={styles.link} href="/scout/pipeline" data-tour="pipeline">
               📋 パイプライン
             </Link>
             <Link className={styles.link} href="/billing">
@@ -155,7 +195,7 @@ export default function ScoutSearchPage() {
           </p>
 
           {/* KPI 統計 */}
-          <div className={styles.stats}>
+          <div className={styles.stats} data-tour="stats">
             <div className={styles.statCard}>
               <div className={styles.statValue}>{stats.total}</div>
               <div className={styles.statLabel}>該当選手</div>
@@ -176,6 +216,7 @@ export default function ScoutSearchPage() {
 
           <form
             className={styles.filters}
+            data-tour="filters"
             onSubmit={(e) => {
               e.preventDefault();
               void runSearch(filters);
@@ -245,7 +286,7 @@ export default function ScoutSearchPage() {
             <p className={styles.empty}>条件に一致する公開選手が見つかりませんでした。</p>
           ) : null}
 
-          <div className={styles.grid}>
+          <div className={styles.grid} data-tour="results">
             {athletes.map((a) => (
               <div key={a.id} className={styles.card}>
                 <Link
@@ -316,6 +357,13 @@ export default function ScoutSearchPage() {
             未成年の選手は保護者同意がある場合のみ表示されます。
           </p>
         </div>
+
+        <GuideTour
+          steps={TOUR_STEPS}
+          storageKey="sportstech_tour_search"
+          autoStart
+          startSignal={tourSignal}
+        />
       </div>
     </>
   );

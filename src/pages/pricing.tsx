@@ -156,7 +156,7 @@ export default function PricingPage() {
 
                     <Link
                       className={styles.cardSelect}
-                      href="/auth/login"
+                      href={p.tier === "free" ? "/auth/login" : `/billing/checkout?tier=${p.tier}`}
                       style={{
                         display: "block",
                         textAlign: "center",
@@ -171,7 +171,7 @@ export default function PricingPage() {
                       {p.tier === "free"
                         ? "無料で始める"
                         : p.tier === "enterprise"
-                          ? "お問い合わせ"
+                          ? "請求書払いで申し込む"
                           : "申し込む"}
                     </Link>
                   </div>

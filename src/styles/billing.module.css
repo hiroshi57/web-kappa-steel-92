@@ -1,0 +1,384 @@
+/**
+ * 料金→申込→請求書払いのオンボーディング導線用スタイル。
+ * デザイントークン（globals.css）準拠。
+ */
+
+/* ── ステッパー ── */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.stepNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+.stepActive {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.stepActive .stepNum {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.stepDone .stepNum {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #fff;
+}
+
+.stepBar {
+  flex: 1;
+  height: 1px;
+  min-width: 16px;
+  background: var(--color-border);
+}
+
+/* ── 2カラム（本体 + 注文サマリー） ── */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+}
+
+.card + .card {
+  margin-top: var(--space-4);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: var(--space-4);
+}
+
+/* ── 支払い方法カード ── */
+.methods {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.method {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.method:hover {
+  border-color: var(--color-accent);
+}
+
+.methodActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-050);
+}
+
+.methodDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.radio {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-text-subtle);
+  margin-top: 2px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.methodActive .radio {
+  border-color: var(--color-accent);
+}
+
+.methodActive .radio::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+}
+
+.methodBody {
+  flex: 1;
+}
+
+.methodTitle {
+  font-weight: 700;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.methodDesc {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.methodTag {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-050);
+  color: var(--color-accent-600);
+}
+
+/* ── フォーム ── */
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.req {
+  color: var(--color-danger);
+  margin-left: 4px;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  margin-top: var(--space-1);
+}
+
+/* ── 注文サマリー ── */
+.summary {
+  position: sticky;
+  top: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+}
+
+.summaryPlan {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  color: var(--color-primary);
+}
+
+.summaryPrice {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--color-primary);
+  margin: var(--space-2) 0;
+}
+
+.summaryPrice small {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.summaryList {
+  list-style: none;
+  margin: var(--space-4) 0;
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.summaryList li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-1) 0;
+}
+
+.summaryList li strong {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.cta {
+  width: 100%;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  font-size: var(--text-base);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cta:hover:not(:disabled) {
+  background: var(--color-accent-600);
+}
+
+.cta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ctaNote {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  text-align: center;
+  margin-top: var(--space-3);
+  line-height: 1.6;
+}
+
+/* ── 完了 ── */
+.done {
+  text-align: center;
+  padding: var(--space-7) var(--space-5);
+}
+
+.doneIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: var(--space-4);
+}
+
+.doneTitle {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  color: var(--color-primary);
+  margin-bottom: var(--space-2);
+}
+
+.doneMsg {
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-5);
+  line-height: 1.8;
+}
+
+/* ── 契約状況（/billing） ── */
+.subGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.subStat {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.subStatVal {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.subStatLabel {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.usageTrack {
+  height: 10px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-top: var(--space-2);
+}
+
+.usageFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+}

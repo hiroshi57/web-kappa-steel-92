@@ -546,20 +546,102 @@ export function listPlans(): Promise<Plan[]> {
   return request<Plan[]>("GET", "/api/billing/plans");
 }
 
+// ── デモ用の契約状態ストア（オンボーディングを通しで体験可能にする） ──
+
+const DEMO_SUB_KEY = "sportstech_demo_subscription";
+
+function demoDefaultSub(): Subscription {
+  return {
+    plan_tier: "free",
+    plan_name: "Free",
+    status: "active",
+    billing_type: "card",
+    analyses_used: 1,
+    monthly_analyses: 3,
+    analyses_remaining: 2,
+    max_athletes: 3,
+  };
+}
+
+function demoReadSub(): Subscription {
+  if (typeof window === "undefined") return demoDefaultSub();
+  try {
+    const raw = window.localStorage.getItem(DEMO_SUB_KEY);
+    return raw ? (JSON.parse(raw) as Subscription) : demoDefaultSub();
+  } catch {
+    return demoDefaultSub();
+  }
+}
+
+function demoWriteSub(sub: Subscription): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_SUB_KEY, JSON.stringify(sub));
+}
+
+function demoActivate(tier: Plan["tier"], billingType: "card" | "invoice"): Subscription {
+  const plan = DEMO_PLANS.find((p) => p.tier === tier) ?? DEMO_PLANS[0];
+  const used = demoReadSub().analyses_used ?? 0;
+  const sub: Subscription = {
+    plan_tier: plan.tier,
+    plan_name: plan.name,
+    status: billingType === "invoice" ? "trialing" : "active",
+    billing_type: billingType,
+    analyses_used: used,
+    monthly_analyses: plan.monthly_analyses,
+    analyses_remaining:
+      plan.monthly_analyses == null ? null : Math.max(0, plan.monthly_analyses - used),
+    max_athletes: plan.max_athletes,
+  };
+  demoWriteSub(sub);
+  return sub;
+}
+
 export function getSubscription(): Promise<Subscription> {
+  if (DEMO) return delay(demoReadSub());
+  return request<Subscription>("GET", "/api/billing/subscription");
+}
+
+export interface CheckoutResult {
+  checkout_url: string | null;
+  mode: "stripe" | "manual" | "demo";
+  message: string;
+}
+
+/** カード決済のチェックアウト開始（E#37）。 */
+export function startCheckout(tier: Plan["tier"]): Promise<CheckoutResult> {
   if (DEMO) {
+    demoActivate(tier, "card");
     return delay({
-      plan_tier: "free",
-      plan_name: "Free",
-      status: "active",
-      billing_type: "card",
-      analyses_used: 1,
-      monthly_analyses: 3,
-      analyses_remaining: 2,
-      max_athletes: 3,
+      checkout_url: null,
+      mode: "demo",
+      message: "デモ環境ではカード決済の成立を模擬し、プランを有効化しました。",
     });
   }
-  return request<Subscription>("GET", "/api/billing/subscription");
+  return request<CheckoutResult>("POST", "/api/billing/checkout", {
+    tier,
+    success_url: `${window.location.origin}/billing?applied=1`,
+    cancel_url: `${window.location.origin}/pricing`,
+  });
+}
+
+export interface InvoiceRequestInput {
+  tier: Plan["tier"];
+  company_name: string;
+  contact_email: string;
+  note?: string;
+}
+
+/** 請求書払い（B2B）の申込（E#37）。 */
+export function requestInvoice(input: InvoiceRequestInput): Promise<Subscription> {
+  if (DEMO) return delay(demoActivate(input.tier, "invoice"));
+  return request<Subscription>("POST", "/api/billing/invoice", input);
+}
+
+/** デモ専用: 契約を Free に戻す（体験のリセット用）。 */
+export function resetSubscriptionDemo(): Promise<Subscription> {
+  const sub = demoDefaultSub();
+  demoWriteSub(sub);
+  return delay(sub);
 }
 
 // ── 商談パイプライン(C#25) / 共有ノート(C#26) / 動画クリップ(C#27) ──
